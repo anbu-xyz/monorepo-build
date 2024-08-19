@@ -8,10 +8,7 @@ import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.project.MavenProject;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.util.concurrent.Executors;
+import javax.inject.Inject;
 
 /**
  * An example Maven Mojo that resolves the current project's git revision and adds
@@ -26,34 +23,12 @@ public class GitVersionMojo extends AbstractMojo {
     @Parameter(property = "project", readonly = true)
     private MavenProject project;
 
-    public String getVersion(String command) throws MojoExecutionException {
-        try {
-            StringBuilder builder = new StringBuilder();
-
-            Process process = Runtime.getRuntime().exec(command);
-            Executors.newSingleThreadExecutor().submit(() ->
-                    new BufferedReader(new InputStreamReader(process.getInputStream()))
-                            .lines().forEach(builder::append)
-            );
-            int exitCode = process.waitFor();
-
-            if (exitCode != 0) {
-                throw new MojoExecutionException("Execution of command '" + command
-                        + "' failed with exit code: " + exitCode);
-            }
-
-            // return the output
-            return builder.toString();
-
-        } catch (IOException | InterruptedException e) {
-            throw new MojoExecutionException("Execution of command '" + command
-                    + "' failed", e);
-        }
-    }
+    @Inject
+    private VersionProvider versionProvider;
 
     public void execute() throws MojoExecutionException, MojoFailureException {
         // call the getVersion method
-        String version = getVersion(command);
+        String version = versionProvider.getVersion(command, getLog());
 
         // define a new property in the Maven Project
         project.getProperties().put("exampleVersion", version);
