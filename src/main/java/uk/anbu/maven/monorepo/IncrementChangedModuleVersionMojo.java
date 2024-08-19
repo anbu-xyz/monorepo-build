@@ -10,8 +10,8 @@ import org.apache.maven.project.MavenProject;
 import java.io.File;
 import java.util.List;
 
-@Mojo(name = "list-changed-modules", defaultPhase = LifecyclePhase.INITIALIZE)
-public class ListChangedModulesMojo extends AbstractMojo {
+@Mojo(name = "increment-changed-module-version", defaultPhase = LifecyclePhase.INITIALIZE)
+public class IncrementChangedModuleVersionMojo extends AbstractMojo {
 
     @Parameter(defaultValue = "${project.basedir}", readonly = true)
     private File basedir;
@@ -40,10 +40,11 @@ public class ListChangedModulesMojo extends AbstractMojo {
             return;
         }
 
-        getLog().info("Changed modules since last successful build:");
         for (String module : changedModules) {
-            getLog().info("- " + module);
+            String newVersion = new GitHelper(getLog(), basedir).incrementRevisionOfSubModule(module);
+            getLog().info("Incremented version for module " + module + " to " + newVersion);
         }
+
     }
 
 }
