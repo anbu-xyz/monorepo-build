@@ -3,15 +3,11 @@ package uk.anbu.maven.monorepo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.logging.Log;
 
-import javax.inject.Named;
-import javax.inject.Singleton;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.concurrent.Executors;
 
-@Named
-@Singleton
 public class RuntimeExecVersionProvider implements VersionProvider {
     @Override
     public String getVersion(String command, Log log) throws MojoExecutionException {

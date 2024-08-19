@@ -8,7 +8,6 @@ import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.project.MavenProject;
 
-import javax.inject.Inject;
 
 /**
  * An example Maven Mojo that resolves the current project's git revision and adds
@@ -23,8 +22,11 @@ public class GitVersionMojo extends AbstractMojo {
     @Parameter(property = "project", readonly = true)
     private MavenProject project;
 
-    @Inject
     private VersionProvider versionProvider;
+
+    public GitVersionMojo() {
+        versionProvider = new RuntimeExecVersionProvider();
+    }
 
     public void execute() throws MojoExecutionException, MojoFailureException {
         // call the getVersion method

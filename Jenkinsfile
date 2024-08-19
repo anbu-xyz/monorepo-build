@@ -18,7 +18,7 @@ pipeline {
                 script {
                     updateGithubCommitStatus('pending', 'Building...')
 
-                    sh 'mvn clean install && mvn package -f sample-pom.xml'
+                    sh 'mvn --version && mvn clean install && (cd sample-project && mvn package -X)'
                 }
             }
         }
