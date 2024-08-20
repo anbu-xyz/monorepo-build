@@ -216,6 +216,16 @@ public class GitHelper {
         request.setPomFile(new File(moduleDir, "pom.xml"));
         request.setGoals(Arrays.asList("build-helper:parse-version", "versions:set", "versions:commit"));
         request.setProfiles(Arrays.asList("release"));
+        String mavenHome = System.getenv("M2_HOME");
+        if (mavenHome == null) {
+            throw new IllegalStateException("M2_HOME not set. This is required for maven version:set to run");
+        }
+        String mavenRepo = System.getenv("M2_REPO");
+        if (mavenRepo == null) {
+            throw new IllegalStateException("M2_REPO not set. This is required for maven version:set to run");
+        }
+        request.setMavenHome(new File(mavenHome));
+        request.setLocalRepositoryDirectory(new File(mavenRepo));
 
         Properties properties = new Properties();
         properties.setProperty("newVersion", "${parsedVersion.majorVersion}.${parsedVersion.minorVersion}.${parsedVersion.nextIncrementalVersion}");
