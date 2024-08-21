@@ -214,7 +214,7 @@ public class GitHelper {
     private static InvocationRequest getInvocationRequest(File moduleDir) {
         InvocationRequest request = new DefaultInvocationRequest();
         request.setPomFile(new File(moduleDir, "pom.xml"));
-        request.setGoals(Arrays.asList("build-helper:parse-version", "versions:set", "versions:commit"));
+        request.setGoals(Arrays.asList("build-helper:parse-version", "versions:set-property"));
         request.setProfiles(Arrays.asList("release"));
         String mavenHome = System.getenv("M2_HOME");
         if (mavenHome == null) {
@@ -228,7 +228,9 @@ public class GitHelper {
         request.setLocalRepositoryDirectory(new File(mavenRepo));
 
         Properties properties = new Properties();
-        properties.setProperty("newVersion", "${parsedVersion.majorVersion}.${parsedVersion.minorVersion}.${parsedVersion.nextIncrementalVersion}");
+        properties.setProperty("property", String.format("%s-version", moduleDir.getName()));
+        properties.setProperty("newVersion",
+                "${parsedVersion.majorVersion}.${parsedVersion.minorVersion}.${parsedVersion.nextIncrementalVersion}");
         request.setProperties(properties);
         return request;
     }
