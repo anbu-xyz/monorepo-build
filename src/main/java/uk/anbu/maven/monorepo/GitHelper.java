@@ -193,7 +193,7 @@ public class GitHelper {
             return null;
         }
 
-        InvocationRequest request = getInvocationRequest(basedir, moduleDir);
+        InvocationRequest request = getInvocationRequest(moduleDir);
 
         Invoker invoker = new DefaultInvoker();
         InvocationResult result = invoker.execute(request);
@@ -206,15 +206,16 @@ public class GitHelper {
         }
 
         MavenXpp3Reader reader = new MavenXpp3Reader();
-        Model model = reader.read(new FileReader(new File(basedir, "pom.xml")));
-        return model.getProperties().getProperty(moduleName + ".version");
+        Model model = reader.read(new FileReader(new File(moduleDir, "pom.xml")));
+        return model.getVersion();
     }
 
     @SneakyThrows
-    private InvocationRequest getInvocationRequest(File basedir, File moduleDir) {
+    private static InvocationRequest getInvocationRequest(File moduleDir) {
         InvocationRequest request = new DefaultInvocationRequest();
-        request.setPomFile(new File(basedir, "pom.xml"));
-        request.addArg("versions:set-property");
+        File pomFile = new File(moduleDir, "pom.xml");
+        request.setPomFile(pomFile);
+        request.addArg("versions:set");
 
         String mavenHome = System.getenv("M2_HOME");
         if (mavenHome == null) {
@@ -227,55 +228,23 @@ public class GitHelper {
         request.setMavenHome(new File(mavenHome));
         request.setLocalRepositoryDirectory(new File(mavenRepo));
 
+        // Read the current version from the POM file
+        MavenXpp3Reader reader = new MavenXpp3Reader();
+        Model model = reader.read(new FileReader(pomFile));
+        String currentVersion = model.getVersion();
+
+        // Parse the version and increment the patch number
+        String[] versionParts = currentVersion.split("\\.");
+        int major = Integer.parseInt(versionParts[0]);
+        int minor = Integer.parseInt(versionParts[1]);
+        int patch = Integer.parseInt(versionParts[2]);
+        String newVersion = String.format("%d.%d.%d", major, minor, patch + 1);
+
+        // Set the new version
         Properties properties = new Properties();
-        String moduleName = moduleDir.getName();
-        String propertyName = moduleName + ".version";
-
-        // Read the current version from the parent POM
-        String currentVersion = readVersionFromParentPom(moduleName);
-
-        // Increment the version
-        String newVersion = incrementVersion(currentVersion);
-
-        getLog().info("Incrementing version of module " + moduleName + " from " + currentVersion + " to " + newVersion);
-
-        properties.setProperty("property", propertyName);
         properties.setProperty("newVersion", newVersion);
-        properties.setProperty("generateBackupPoms", "false");
         request.setProperties(properties);
 
         return request;
-    }
-
-    @SneakyThrows
-    private String readVersionFromParentPom(String moduleName) {
-        File parentPomFile = new File(basedir, "pom.xml");
-        MavenXpp3Reader reader = new MavenXpp3Reader();
-        Model model = reader.read(new FileReader(parentPomFile));
-
-        Properties props = model.getProperties();
-        String versionPropertyName = moduleName + ".version";
-        String version = props.getProperty(versionPropertyName);
-
-        if (version == null) {
-            throw new IllegalStateException("Version property " + versionPropertyName + " not found in parent POM");
-        }
-
-        return version;
-    }
-
-    private String incrementVersion(String version) {
-        String[] parts = version.split("\\.");
-        if (parts.length != 3) {
-            throw new IllegalArgumentException("Invalid version format: " + version);
-        }
-
-        int major = Integer.parseInt(parts[0]);
-        int minor = Integer.parseInt(parts[1]);
-        int patch = Integer.parseInt(parts[2]);
-
-        patch++;
-
-        return major + "." + minor + "." + patch;
     }
 }
