@@ -35,7 +35,6 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Properties;
@@ -194,7 +193,7 @@ public class GitHelper {
             return null;
         }
 
-        InvocationRequest request = getInvocationRequest(moduleDir);
+        InvocationRequest request = getInvocationRequest(basedir, moduleDir);
 
         Invoker invoker = new DefaultInvoker();
         InvocationResult result = invoker.execute(request);
@@ -207,15 +206,16 @@ public class GitHelper {
         }
 
         MavenXpp3Reader reader = new MavenXpp3Reader();
-        Model model = reader.read(new FileReader(new File(moduleDir, "pom.xml")));
-        return model.getVersion();
+        Model model = reader.read(new FileReader(new File(basedir, "pom.xml")));
+        return model.getProperties().getProperty(moduleName + ".version");
     }
 
-    private static InvocationRequest getInvocationRequest(File moduleDir) {
+    @SneakyThrows
+    private InvocationRequest getInvocationRequest(File basedir, File moduleDir) {
         InvocationRequest request = new DefaultInvocationRequest();
-        request.setPomFile(new File(moduleDir, "pom.xml"));
-        request.setGoals(Arrays.asList("build-helper:parse-version", "versions:set-property"));
-        request.setProfiles(Arrays.asList("release"));
+        request.setPomFile(new File(basedir, "pom.xml"));
+        request.addArg("versions:set-property");
+
         String mavenHome = System.getenv("M2_HOME");
         if (mavenHome == null) {
             throw new IllegalStateException("M2_HOME not set. This is required for maven version:set to run");
@@ -228,10 +228,54 @@ public class GitHelper {
         request.setLocalRepositoryDirectory(new File(mavenRepo));
 
         Properties properties = new Properties();
-        properties.setProperty("property", String.format("%s-version", moduleDir.getName()));
-        properties.setProperty("newVersion",
-                "${parsedVersion.majorVersion}.${parsedVersion.minorVersion}.${parsedVersion.nextIncrementalVersion}");
+        String moduleName = moduleDir.getName();
+        String propertyName = moduleName + ".version";
+
+        // Read the current version from the parent POM
+        String currentVersion = readVersionFromParentPom(moduleName);
+
+        // Increment the version
+        String newVersion = incrementVersion(currentVersion);
+
+        getLog().info("Incrementing version of module " + moduleName + " from " + currentVersion + " to " + newVersion);
+
+        properties.setProperty("property", propertyName);
+        properties.setProperty("newVersion", newVersion);
+        properties.setProperty("generateBackupPoms", "false");
         request.setProperties(properties);
+
         return request;
+    }
+
+    @SneakyThrows
+    private String readVersionFromParentPom(String moduleName) {
+        File parentPomFile = new File(basedir, "pom.xml");
+        MavenXpp3Reader reader = new MavenXpp3Reader();
+        Model model = reader.read(new FileReader(parentPomFile));
+
+        Properties props = model.getProperties();
+        String versionPropertyName = moduleName + ".version";
+        String version = props.getProperty(versionPropertyName);
+
+        if (version == null) {
+            throw new IllegalStateException("Version property " + versionPropertyName + " not found in parent POM");
+        }
+
+        return version;
+    }
+
+    private String incrementVersion(String version) {
+        String[] parts = version.split("\\.");
+        if (parts.length != 3) {
+            throw new IllegalArgumentException("Invalid version format: " + version);
+        }
+
+        int major = Integer.parseInt(parts[0]);
+        int minor = Integer.parseInt(parts[1]);
+        int patch = Integer.parseInt(parts[2]);
+
+        patch++;
+
+        return major + "." + minor + "." + patch;
     }
 }
