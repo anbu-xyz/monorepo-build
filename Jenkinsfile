@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        GITHUB_CREDENTIALS_ID = 'github-PAT-Aug-16'
+        GITHUB_CREDENTIALS_ID = 'bf69d9ff-a08d-4138-979a-2f7f32bc860b'
         GITHUB_ACCOUNT = 'anbu-xyz'
         GITHUB_REPO = 'monorepo-build'
     }
@@ -18,7 +18,13 @@ pipeline {
                 script {
                     updateGithubCommitStatus('pending', 'Building...')
 
-                    sh 'mvn --version && mvn clean install && (cd sample-project && mvn package -X)'
+                    sh """mvn --version && mvn clean install && \
+                            cd target && \
+                            if [ -d monorepo-build-sample ]; then rm -rf monorepo-build-sample; fi && \
+                            git clone https://github.com/anbu-xyz/monorepo-build-sample.git && \
+                            cd monorepo-build-sample && \
+                            mvn clean install
+                            """
                 }
             }
         }
