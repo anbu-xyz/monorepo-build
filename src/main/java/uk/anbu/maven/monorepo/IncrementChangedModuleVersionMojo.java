@@ -2,6 +2,7 @@ package uk.anbu.maven.monorepo;
 
 import lombok.SneakyThrows;
 import org.apache.maven.plugin.AbstractMojo;
+import org.apache.maven.plugin.logging.Log;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
@@ -24,17 +25,11 @@ public class IncrementChangedModuleVersionMojo extends AbstractMojo {
     @Override
     @SneakyThrows
     public void execute() {
-        if ("pom".equals(project.getPackaging())) {
-            getLog().info("The current project is of type 'pom'.");
-            List<String> modules = project.getModules();
-            if (modules == null || modules.isEmpty()) {
-                getLog().info("The current project does not have submodules.");
-                return;
-            }
-        } else {
-            getLog().info("The current project is NOT of type 'pom'.");
-            return;
-        }
+        String packaging = project.getPackaging();
+        List<String> modules = project.getModules();
+        String baseDir = basedir.getAbsolutePath();
+
+        if (extracted(getLog(), packaging, modules, baseDir)) return;
 
         List<String> changedModules = new GitHelper(getLog(), basedir).changedModuleList();
         if (changedModules == null || changedModules.isEmpty()) {
@@ -51,6 +46,25 @@ public class IncrementChangedModuleVersionMojo extends AbstractMojo {
             String newVersion = new GitHelper(getLog(), basedir).incrementRevisionOfSubModule(module);
             getLog().info("Incremented version for module " + module + " to " + newVersion);
         }
+    }
+
+    public static boolean extracted(Log log, String packaging, List<String> modules, String baseDir) {
+        if ("pom".equals(packaging)) {
+            log.info("The current project is of type 'pom'.");
+            if (modules == null || modules.isEmpty()) {
+                log.info("The current project does not have submodules.");
+                return true;
+            }
+        } else {
+            log.info("The current project is NOT of type 'pom'.");
+            return true;
+        }
+
+        if (!System.getProperty("user.dir").equals(baseDir)) {
+            log.info(String.format("Base directory %s is not same as current directory %s", baseDir, System.getProperty("user.dir")));
+            return true;
+        }
+        return false;
     }
 
     private List<String> computeAffectedDependantModules(List<String> changedModules) {

@@ -10,6 +10,8 @@ import org.apache.maven.project.MavenProject;
 import java.io.File;
 import java.util.List;
 
+import static uk.anbu.maven.monorepo.IncrementChangedModuleVersionMojo.extracted;
+
 @Mojo(name = "list-changed-modules", defaultPhase = LifecyclePhase.INITIALIZE)
 public class ListChangedModulesMojo extends AbstractMojo {
 
@@ -22,17 +24,11 @@ public class ListChangedModulesMojo extends AbstractMojo {
     @Override
     @SneakyThrows
     public void execute() {
-        if ("pom".equals(project.getPackaging())) {
-            getLog().info("The current project is of type 'pom'.");
-            List<String> modules = project.getModules();
-            if (modules == null || modules.isEmpty()) {
-                getLog().info("The current project does not have submodules.");
-                return;
-            }
-        } else {
-            getLog().info("The current project is NOT of type 'pom'.");
-            return;
-        }
+        String packaging = project.getPackaging();
+        List<String> modules = project.getModules();
+        String baseDir = basedir.getAbsolutePath();
+
+        if (extracted(getLog(), packaging, modules, baseDir)) return;
 
         List<String> changedModules = new GitHelper(getLog(), basedir).changedModuleList();
         if (changedModules == null || changedModules.isEmpty()) {
