@@ -248,4 +248,33 @@ public class GitHelper {
 
         return request;
     }
+
+    @SneakyThrows
+    public void updateProperties() {
+        InvocationRequest request = getInvocationRequest(basedir);
+        File pomFile = new File(basedir, "pom.xml");
+        request.setPomFile(pomFile);
+        request.addArg("versions:update-properties");
+
+        String mavenHome = System.getenv("M2_HOME");
+        if (mavenHome == null) {
+            throw new IllegalStateException("M2_HOME not set. This is required for maven version:set to run");
+        }
+        String mavenRepo = System.getenv("M2_REPO");
+        if (mavenRepo == null) {
+            throw new IllegalStateException("M2_REPO not set. This is required for maven version:set to run");
+        }
+        request.setMavenHome(new File(mavenHome));
+        request.setLocalRepositoryDirectory(new File(mavenRepo));
+
+        Invoker invoker = new DefaultInvoker();
+        InvocationResult result = invoker.execute(request);
+        if (result.getExitCode() != 0) {
+            if (result.getExecutionException() != null) {
+                throw new RuntimeException("Failed to update properties", result.getExecutionException());
+            } else {
+                throw new RuntimeException("Failed to update properties. Exit code: " + result.getExitCode());
+            }
+        }
+    }
 }

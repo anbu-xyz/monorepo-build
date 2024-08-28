@@ -47,6 +47,8 @@ public class IncrementChangedModuleVersionMojo extends AbstractMojo {
             String newVersion = new GitHelper(getLog(), basedir).incrementRevisionOfSubModule(module);
             getLog().info("Incremented version for module " + module + " to " + newVersion);
         }
+
+        new GitHelper(getLog(), basedir).updateProperties();
     }
 
     public static boolean extracted(Log log, String packaging, List<String> modules, String baseDir) {
