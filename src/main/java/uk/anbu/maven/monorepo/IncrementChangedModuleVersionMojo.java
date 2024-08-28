@@ -9,7 +9,7 @@ import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.project.MavenProject;
 
 import java.io.File;
-import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -40,7 +40,7 @@ public class IncrementChangedModuleVersionMojo extends AbstractMojo {
 
         List<String> affectedDependantModules = computeAffectedDependantModules(changedModules);
 
-        List<String> allModulesToUpdate = new ArrayList<>(changedModules);
+        Set<String> allModulesToUpdate = new HashSet<>(changedModules);
         allModulesToUpdate.addAll(affectedDependantModules);
 
         for (String module : allModulesToUpdate) {
@@ -48,7 +48,6 @@ public class IncrementChangedModuleVersionMojo extends AbstractMojo {
             getLog().info("Incremented version for module " + module + " to " + newVersion);
         }
 
-        new GitHelper(getLog(), basedir).updateProperties();
     }
 
     public static boolean extracted(Log log, String packaging, List<String> modules, String baseDir) {
@@ -75,7 +74,6 @@ public class IncrementChangedModuleVersionMojo extends AbstractMojo {
             DependencyUpdateAnalyzer analyzer = new DependencyUpdateAnalyzer();
             analyzer.buildDependencyGraph(new File(basedir, "pom.xml").getAbsolutePath());
             Set<DependencyUpdateAnalyzer.Module> affectedModules = analyzer.findModulesToUpdate(changedModules);
-//            analyzer.printDependencyTree();
 
             getLog().info("Affected dependent modules: " + affectedModules);
             return affectedModules.stream().map(DependencyUpdateAnalyzer.Module::artifactId).collect(Collectors.toList());

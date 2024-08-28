@@ -37,6 +37,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 
@@ -193,10 +194,13 @@ public class GitHelper {
             return null;
         }
 
-        InvocationRequest request = getInvocationRequest(moduleDir);
+        var request = getInvocationRequest(moduleDir);
+        if (request.isEmpty()) {
+            return "skipped";
+        }
 
         Invoker invoker = new DefaultInvoker();
-        InvocationResult result = invoker.execute(request);
+        InvocationResult result = invoker.execute(request.get());
         if (result.getExitCode() != 0) {
             if (result.getExecutionException() != null) {
                 throw new MojoExecutionException("Failed to increment version for module: " + moduleName, result.getExecutionException());
@@ -211,7 +215,7 @@ public class GitHelper {
     }
 
     @SneakyThrows
-    private static InvocationRequest getInvocationRequest(File moduleDir) {
+    private static Optional<InvocationRequest> getInvocationRequest(File moduleDir) {
         InvocationRequest request = new DefaultInvocationRequest();
         File pomFile = new File(moduleDir, "pom.xml");
         request.setPomFile(pomFile);
@@ -232,6 +236,9 @@ public class GitHelper {
         MavenXpp3Reader reader = new MavenXpp3Reader();
         Model model = reader.read(new FileReader(pomFile));
         String currentVersion = model.getVersion();
+        if (currentVersion.startsWith("${")) {
+            return Optional.empty();
+        }
 
         // Parse the version and increment the patch number
         String[] versionParts = currentVersion.split("\\.");
@@ -246,35 +253,6 @@ public class GitHelper {
         properties.setProperty("generateBackupPoms", "false");
         request.setProperties(properties);
 
-        return request;
-    }
-
-    @SneakyThrows
-    public void updateProperties() {
-        InvocationRequest request = getInvocationRequest(basedir);
-        File pomFile = new File(basedir, "pom.xml");
-        request.setPomFile(pomFile);
-        request.addArg("versions:update-properties");
-
-        String mavenHome = System.getenv("M2_HOME");
-        if (mavenHome == null) {
-            throw new IllegalStateException("M2_HOME not set. This is required for maven version:set to run");
-        }
-        String mavenRepo = System.getenv("M2_REPO");
-        if (mavenRepo == null) {
-            throw new IllegalStateException("M2_REPO not set. This is required for maven version:set to run");
-        }
-        request.setMavenHome(new File(mavenHome));
-        request.setLocalRepositoryDirectory(new File(mavenRepo));
-
-        Invoker invoker = new DefaultInvoker();
-        InvocationResult result = invoker.execute(request);
-        if (result.getExitCode() != 0) {
-            if (result.getExecutionException() != null) {
-                throw new RuntimeException("Failed to update properties", result.getExecutionException());
-            } else {
-                throw new RuntimeException("Failed to update properties. Exit code: " + result.getExitCode());
-            }
-        }
+        return Optional.of(request);
     }
 }

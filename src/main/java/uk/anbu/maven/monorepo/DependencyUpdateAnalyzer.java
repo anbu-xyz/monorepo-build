@@ -41,13 +41,17 @@ public class DependencyUpdateAnalyzer {
 
     private void replaceChildModuleDependenciesWithParentModuleDependencies() {
         modules.forEach((moduleName, moduleInfo) -> {
+            List<Module> toBeRemoved = new ArrayList<>();
+            List<Module> toBeAdded = new ArrayList<>();
             for (var child : moduleInfo.dependencies) {
                 var parent = findModuleContainingChild(child);
                 if (parent.isPresent()) {
-                    moduleInfo.dependencies.add(parent.get());
-                    moduleInfo.dependencies.remove(child);
+                    toBeRemoved.add(child);
+                    toBeAdded.add(parent.get());
                 }
             }
+            moduleInfo.dependencies.addAll(toBeAdded);
+            moduleInfo.dependencies.removeAll(toBeRemoved);
         });
     }
 
