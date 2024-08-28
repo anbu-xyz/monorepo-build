@@ -9,8 +9,10 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.*;
+import java.util.stream.Collectors;
 
 public class DependencyUpdateAnalyzer {
+    private Map<String, String> properties = new HashMap<>();
 
     private static class Module {
         String artifactId;
@@ -34,9 +36,14 @@ public class DependencyUpdateAnalyzer {
         MavenXpp3Reader reader = new MavenXpp3Reader();
         Model model = reader.read(new FileReader(pomFile));
 
-        Module module = modules.computeIfAbsent(model.getArtifactId(), k -> new Module(model.getArtifactId(), model.getVersion()));
+        if (model.getProperties() != null) {
+            Map<String, String> propertiesAsStrings = model.getProperties().entrySet().stream()
+                        .collect(Collectors.toMap(e -> e.getKey().toString(), e -> e.getValue().toString()));
+            properties.putAll(propertiesAsStrings);
+        }
 
-        // Process sub-modules
+        Module module = modules.computeIfAbsent(model.getArtifactId(), k -> new Module(model.getArtifactId(), resolveVersion(model.getVersion())));
+
         if (model.getModules() != null) {
             for (String subModule : model.getModules()) {
                 File subModulePomFile = new File(pomFile.getParentFile(), subModule + File.separator + "pom.xml");
@@ -44,7 +51,6 @@ public class DependencyUpdateAnalyzer {
             }
         }
 
-        // Process dependencies
         if (model.getDependencies() != null) {
             for (Dependency dependency : model.getDependencies()) {
                 Module dependencyModule = modules.get(dependency.getArtifactId());
@@ -54,6 +60,17 @@ public class DependencyUpdateAnalyzer {
                 }
             }
         }
+    }
+
+    private String resolveVersion(String version) {
+        if (version == null) {
+            return null;
+        }
+        if (version.startsWith("${") && version.endsWith("}")) {
+            String propertyName = version.substring(2, version.length() - 1);
+            return properties.getOrDefault(propertyName, version);
+        }
+        return version;
     }
 
     public Set<String> findModulesToUpdate(List<String> changedModules) {
@@ -77,5 +94,45 @@ public class DependencyUpdateAnalyzer {
         }
 
         return modulesToUpdate;
+    }
+
+    public void printDependencyTree(List<String> changedModules) {
+        Set<String> modulesToUpdate = findModulesToUpdate(changedModules);
+
+        for (String rootModuleName : modules.keySet()) {
+            if (!hasParent(rootModuleName)) {
+                printModuleTree(rootModuleName, "", true, new HashSet<>(), modulesToUpdate);
+            }
+        }
+    }
+
+    private boolean hasParent(String moduleName) {
+        Module module = modules.get(moduleName);
+        return module.dependents.stream().anyMatch(m -> modules.containsKey(m.artifactId));
+    }
+
+    private void printModuleTree(String moduleName, String prefix, boolean isLast,
+                                 Set<String> printed, Set<String> modulesToUpdate) {
+        if (printed.contains(moduleName)) {
+            System.out.println(prefix + (isLast ? "└── " : "├── ") + moduleName + " (circular reference)");
+            return;
+        }
+
+        Module module = modules.get(moduleName);
+        if (module == null) return;
+
+        printed.add(moduleName);
+
+        String marker = isLast ? "└── " : "├── ";
+        String updateMarker = modulesToUpdate.contains(moduleName) ? " [UPDATE]" : "";
+        System.out.println(prefix + marker + module.artifactId + " (" + module.version + ")" + updateMarker);
+
+        String newPrefix = prefix + (isLast ? "    " : "│   ");
+
+        for (int i = 0; i < module.dependencies.size(); i++) {
+            Module dependency = module.dependencies.get(i);
+            boolean lastDependency = (i == module.dependencies.size() - 1);
+            printModuleTree(dependency.artifactId, newPrefix, lastDependency, new HashSet<>(printed), modulesToUpdate);
+        }
     }
 }
