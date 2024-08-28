@@ -71,16 +71,15 @@ public class IncrementChangedModuleVersionMojo extends AbstractMojo {
         try {
             DependencyUpdateAnalyzer analyzer = new DependencyUpdateAnalyzer();
             analyzer.buildDependencyGraph(new File(basedir, "pom.xml").getAbsolutePath());
-            Set<String> affectedModules = analyzer.findModulesToUpdate(changedModules);
 
-            // Remove the originally changed modules from the affected modules
-            affectedModules.removeAll(changedModules);
+//            // Remove the originally changed modules from the affected modules
+//            affectedModules.removeAll(changedModules);
 
-            getLog().info("Affected dependent modules: " + affectedModules);
-            return new ArrayList<>(affectedModules);
         } catch (Exception e) {
             getLog().error("Error computing affected dependent modules", e);
             return new ArrayList<>();
         }
+        return new ArrayList<>();
+        // TODO: fix this
     }
 }

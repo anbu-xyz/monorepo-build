@@ -243,6 +243,7 @@ public class GitHelper {
         // Set the new version
         Properties properties = new Properties();
         properties.setProperty("newVersion", newVersion);
+        properties.setProperty("generateBackupPoms", "false");
         request.setProperties(properties);
 
         return request;

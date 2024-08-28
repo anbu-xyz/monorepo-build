@@ -1,81 +1,171 @@
 package uk.anbu.maven.monorepo;
 
+import lombok.SneakyThrows;
 import org.apache.maven.model.Dependency;
 import org.apache.maven.model.Model;
+import org.apache.maven.model.ModelBase;
 import org.apache.maven.model.io.xpp3.MavenXpp3Reader;
-import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
 
 import java.io.File;
 import java.io.FileReader;
-import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.*;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 public class DependencyUpdateAnalyzer {
 
-    private static class Module {
-        String artifactId;
-        String version;
-        List<Module> dependencies = new ArrayList<>();
-        List<Module> dependents = new ArrayList<>();
-
-        Module(String artifactId, String version) {
-            this.artifactId = artifactId;
-            this.version = version;
+    private record Module(String groupId, String artifactId) {
+        public Module {
+            if(groupId == null || artifactId == null) {
+                throw new IllegalArgumentException("groupId and artifactId cannot be null");
+            }
+        }
+        public String toString() {
+            return artifactId;
         }
     }
 
-    private Map<String, Module> modules = new HashMap<>();
+    private record SubModuleInfo(Module subModule, Set<Module> dependencies, Set<Module> children) {}
 
-    public void buildDependencyGraph(String rootPomPath) throws IOException, XmlPullParserException {
+    private Map<Module, SubModuleInfo> modules = new HashMap<>();
+
+    public void buildDependencyGraph(String rootPomPath) {
         buildDependencyGraph(new File(rootPomPath));
+        printDependencyList();
+        System.out.println("---------".repeat(10));
+        replaceChildModuleDependenciesWithParentModuleDependencies();
+        printDependencyList();
     }
 
-    private void buildDependencyGraph(File pomFile) throws IOException, XmlPullParserException {
+    private void replaceChildModuleDependenciesWithParentModuleDependencies() {
+        modules.forEach((moduleName, moduleInfo) -> {
+            for (var child : moduleInfo.dependencies) {
+                var parent = findModuleContainingChild(child);
+                if (parent.isPresent()) {
+                    moduleInfo.dependencies.add(parent.get());
+                    moduleInfo.dependencies.remove(child);
+                }
+            }
+        });
+    }
+
+    @SneakyThrows
+    private void buildDependencyGraph(File pomFile) {
         MavenXpp3Reader reader = new MavenXpp3Reader();
-        Model model = reader.read(new FileReader(pomFile));
+        Model topLevelPomModel = reader.read(new FileReader(pomFile));
 
-        Module module = modules.computeIfAbsent(model.getArtifactId(), k -> new Module(model.getArtifactId(), model.getVersion()));
-
-        // Process sub-modules
-        if (model.getModules() != null) {
-            for (String subModule : model.getModules()) {
+        if (topLevelPomModel.getModules() != null) {
+            for (String subModule : topLevelPomModel.getModules()) {
                 File subModulePomFile = new File(pomFile.getParentFile(), subModule + File.separator + "pom.xml");
-                buildDependencyGraph(subModulePomFile);
-            }
-        }
+                Model subModuleModel = reader.read(new FileReader(subModulePomFile));
 
-        // Process dependencies
-        if (model.getDependencies() != null) {
-            for (Dependency dependency : model.getDependencies()) {
-                Module dependencyModule = modules.get(dependency.getArtifactId());
-                if (dependencyModule != null) {
-                    module.dependencies.add(dependencyModule);
-                    dependencyModule.dependents.add(module);
+                var dependencies = findAllDependencies(subModulePomFile, topLevelPomModel);
+                // if submodule is a pom find all children
+                Set<Module> children = new HashSet<>();
+                if (subModuleModel.getPackaging().equals("pom")) {
+                    children = findAllChildren(subModulePomFile, dependencies);
                 }
+                var groupId = getGroupId(subModuleModel);
+                modules.put(new Module(groupId, subModuleModel.getArtifactId())
+                        , new SubModuleInfo(new Module(groupId, subModuleModel.getArtifactId())
+                                , dependencies, children));
             }
         }
     }
 
-    public Set<String> findModulesToUpdate(List<String> changedModules) {
-        Set<String> modulesToUpdate = new HashSet<>();
-        Queue<Module> queue = new LinkedList<>();
-
-        for (String changedModule : changedModules) {
-            Module module = modules.get(changedModule);
-            if (module != null) {
-                queue.add(module);
-            }
+    private static String getGroupId(Model model) {
+        var groupId = model.getGroupId();
+        if (groupId == null) {
+            groupId = model.getParent().getGroupId();
         }
-
-        while (!queue.isEmpty()) {
-            Module currentModule = queue.poll();
-            for (Module dependent : currentModule.dependents) {
-                if (modulesToUpdate.add(dependent.artifactId)) {
-                    queue.add(dependent);
-                }
-            }
-        }
-
-        return modulesToUpdate;
+        return groupId;
     }
+
+    @SneakyThrows
+    private Set<Module> findAllChildren(File subModuleModel, Set<Module> dependencies) {
+        var subModuleDirectory = subModuleModel.getParentFile();
+        // walk down the directory tree to find all pom.xml files using  Files.walk()
+        var subModulePoms = Files.walk(subModuleDirectory.toPath())
+                .filter(Files::isRegularFile)
+                .filter(path -> path.getFileName().toString().equals("pom.xml"))
+                .map(Path::toFile)
+                .toList();
+
+        Set<Module> subModuleModels = new HashSet<>();
+        for (var subModulePom : subModulePoms) {
+            MavenXpp3Reader readerx = new MavenXpp3Reader();
+            var subModuleModelx = readerx.read(new FileReader(subModulePom));
+            var groupId = getGroupId(subModuleModelx);
+            var child = new Module(groupId, subModuleModelx.getArtifactId());
+            subModuleModels.add(child);
+        }
+        return subModuleModels;
+    }
+
+    private void printDependencyList() {
+        modules.forEach((moduleName, moduleInfo) -> {
+            System.out.println(moduleName + ":");
+            System.out.println("  Dependencies: ");
+            for (Module dependency : moduleInfo.dependencies) {
+                System.out.println("      -> " + dependency.artifactId);
+            }
+            System.out.println("  Children: ");
+            for (Module child : moduleInfo.children) {
+                System.out.println("      -> " + child.artifactId);
+            }
+        });
+    }
+
+    private Optional<Module> findModuleContainingChild(Module child) {
+        for (var entry : modules.entrySet()) {
+            if(entry.getValue().children.contains(child)) {
+                return Optional.of(entry.getKey());
+            }
+        }
+        return Optional.empty();
+    }
+
+    @SneakyThrows
+    private Set<Module> findAllDependencies(File subModulePomFile, Model topLevelPomModel) {
+        var reader = new MavenXpp3Reader();
+        var subModuleModel = reader.read(new FileReader(subModulePomFile));
+        if (subModuleModel.getPackaging().equals("pom")) {
+            var subModuleDirectory = subModulePomFile.getParentFile();
+            // walk down the directory tree to find all pom.xml files using  Files.walk()
+            var subModulePoms = Files.walk(subModuleDirectory.toPath())
+                    .filter(Files::isRegularFile)
+                    .filter(path -> path.getFileName().toString().equals("pom.xml"))
+                    .map(Path::toFile)
+                    .toList();
+
+            List<Model> subModuleModels = new ArrayList<>();
+            for (var subModulePom : subModulePoms) {
+                MavenXpp3Reader readerx = new MavenXpp3Reader();
+                subModuleModels.add(readerx.read(new FileReader(subModulePom)));
+            }
+            var x = subModuleModels.stream()
+                    .map(ModelBase::getDependencies)
+                    .filter(Objects::nonNull)
+                    .map(dependencies -> dependencies.stream()
+                            .map(DependencyUpdateAnalyzer::getModule))
+                    .toList();
+            // filter out only those that match top level pom groupId
+            return x.stream()
+                    .flatMap(Function.identity())
+                    .filter(module -> module.groupId.startsWith(topLevelPomModel.getGroupId()))
+                    .collect(Collectors.toSet());
+        } else {
+            return subModuleModel.getDependencies().stream()
+                    .map(DependencyUpdateAnalyzer::getModule)
+                    .filter(module -> module.groupId.startsWith(topLevelPomModel.getGroupId()))
+                    .collect(Collectors.toSet());
+        }
+    }
+
+    private static Module getModule(Dependency dependency) {
+        return new Module(dependency.getGroupId(), dependency.getArtifactId());
+    }
+
 }
