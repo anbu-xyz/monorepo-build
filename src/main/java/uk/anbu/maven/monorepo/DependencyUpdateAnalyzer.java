@@ -16,7 +16,7 @@ import java.util.stream.Collectors;
 
 public class DependencyUpdateAnalyzer {
 
-    private record Module(String groupId, String artifactId) {
+    public record Module(String groupId, String artifactId) {
         public Module {
             if(groupId == null || artifactId == null) {
                 throw new IllegalArgumentException("groupId and artifactId cannot be null");
@@ -168,4 +168,44 @@ public class DependencyUpdateAnalyzer {
         return new Module(dependency.getGroupId(), dependency.getArtifactId());
     }
 
+    public Set<Module> findModulesToUpdate(List<String> changedModules) {
+        Set<Module> modulesToUpdate = new HashSet<>();
+        Queue<Module> queue = new LinkedList<>();
+
+        // Convert changedModules strings to Module objects and add them to the queue
+        for (String changedModule : changedModules) {
+            modules.keySet().stream()
+                    .filter(module -> module.artifactId().equals(changedModule))
+                    .findFirst()
+                    .ifPresent(queue::add);
+        }
+
+        while (!queue.isEmpty()) {
+            Module currentModule = queue.poll();
+            modulesToUpdate.add(currentModule);
+
+            // Find all modules that depend on the current module
+            for (Map.Entry<Module, SubModuleInfo> entry : modules.entrySet()) {
+                if (entry.getValue().dependencies().contains(currentModule) && !modulesToUpdate.contains(entry.getKey())) {
+                    queue.add(entry.getKey());
+                }
+            }
+
+            // Add parent modules if the current module is a child
+            findParentModule(currentModule).ifPresent(parent -> {
+                if (!modulesToUpdate.contains(parent)) {
+                    queue.add(parent);
+                }
+            });
+        }
+
+        return modulesToUpdate;
+    }
+
+    private Optional<Module> findParentModule(Module childModule) {
+        return modules.entrySet().stream()
+                .filter(entry -> entry.getValue().children().contains(childModule))
+                .map(Map.Entry::getKey)
+                .findFirst();
+    }
 }

@@ -12,6 +12,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Mojo(name = "increment-changed-module-version", defaultPhase = LifecyclePhase.INITIALIZE)
 public class IncrementChangedModuleVersionMojo extends AbstractMojo {
@@ -71,15 +72,13 @@ public class IncrementChangedModuleVersionMojo extends AbstractMojo {
         try {
             DependencyUpdateAnalyzer analyzer = new DependencyUpdateAnalyzer();
             analyzer.buildDependencyGraph(new File(basedir, "pom.xml").getAbsolutePath());
+            Set<DependencyUpdateAnalyzer.Module> affectedModules = analyzer.findModulesToUpdate(changedModules);
+//            analyzer.printDependencyTree();
 
-//            // Remove the originally changed modules from the affected modules
-//            affectedModules.removeAll(changedModules);
-
+            getLog().info("Affected dependent modules: " + affectedModules);
+            return affectedModules.stream().map(DependencyUpdateAnalyzer.Module::artifactId).collect(Collectors.toList());
         } catch (Exception e) {
-            getLog().error("Error computing affected dependent modules", e);
-            return new ArrayList<>();
+            throw new RuntimeException("Error computing affected dependent modules", e);
         }
-        return new ArrayList<>();
-        // TODO: fix this
     }
 }
