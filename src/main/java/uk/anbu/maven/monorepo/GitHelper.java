@@ -207,23 +207,7 @@ public class GitHelper {
 
         MavenXpp3Reader reader = new MavenXpp3Reader();
         Model model = reader.read(new FileReader(new File(moduleDir, "pom.xml")));
-        String newVersion = model.getVersion();
-
-        // If version is null, it might be defined in properties
-        if (newVersion == null && model.getParent() != null) {
-            newVersion = model.getParent().getVersion();
-        }
-
-        // If still null, try to find it in properties
-        if (newVersion == null) {
-            newVersion = model.getProperties().getProperty("revision");
-        }
-
-        if (newVersion == null) {
-            throw new IllegalStateException("Unable to determine new version for module: " + moduleName);
-        }
-
-        return newVersion;
+        return model.getVersion();
     }
 
     @SneakyThrows
@@ -232,7 +216,6 @@ public class GitHelper {
         File pomFile = new File(moduleDir, "pom.xml");
         request.setPomFile(pomFile);
         request.addArg("versions:set");
-        request.addArg("versions:update-properties");
 
         String mavenHome = System.getenv("M2_HOME");
         if (mavenHome == null) {
@@ -250,20 +233,6 @@ public class GitHelper {
         Model model = reader.read(new FileReader(pomFile));
         String currentVersion = model.getVersion();
 
-        // If version is null, it might be defined in properties
-        if (currentVersion == null && model.getParent() != null) {
-            currentVersion = model.getParent().getVersion();
-        }
-
-        // If still null, try to find it in properties
-        if (currentVersion == null) {
-            currentVersion = model.getProperties().getProperty("revision");
-        }
-
-        if (currentVersion == null) {
-            throw new IllegalStateException("Unable to determine current version for module: " + moduleDir.getName());
-        }
-
         // Parse the version and increment the patch number
         String[] versionParts = currentVersion.split("\\.");
         int major = Integer.parseInt(versionParts[0]);
@@ -274,7 +243,6 @@ public class GitHelper {
         // Set the new version
         Properties properties = new Properties();
         properties.setProperty("newVersion", newVersion);
-        properties.setProperty("generateBackupPoms", "false");
         request.setProperties(properties);
 
         return request;
