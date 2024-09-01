@@ -187,14 +187,14 @@ public class GitHelper {
     }
 
     @SneakyThrows
-    public String incrementRevisionOfSubModule(String moduleName) {
+    public String incrementRevisionOfSubModule(String moduleName, MavenEnvironment mavenEnvironment) {
         File moduleDir = new File(basedir, moduleName);
         if (!moduleDir.exists() || !moduleDir.isDirectory()) {
             getLog().warn("Module directory not found: " + moduleDir.getAbsolutePath());
             return null;
         }
 
-        var request = getInvocationRequest(moduleDir);
+        var request = getInvocationRequest(moduleDir, mavenEnvironment);
         if (request.isEmpty()) {
             return "skipped";
         }
@@ -215,20 +215,19 @@ public class GitHelper {
     }
 
     @SneakyThrows
-    private static Optional<InvocationRequest> getInvocationRequest(File moduleDir) {
+    private static Optional<InvocationRequest> getInvocationRequest(File moduleDir, MavenEnvironment mavenEnvironment) {
         InvocationRequest request = new DefaultInvocationRequest();
         File pomFile = new File(moduleDir, "pom.xml");
         request.setPomFile(pomFile);
         request.addArg("versions:set");
 
-        String mavenHome = System.getenv("M2_HOME");
-        if (mavenHome == null) {
-            throw new IllegalStateException("M2_HOME not set. This is required for maven version:set to run");
+        String mavenHome = mavenEnvironment.getHome();
+        String mavenRepo = mavenEnvironment.getLocalRepositoryPath();
+        var userSettingsFile = mavenEnvironment.getUserSettingsFile();
+        if (userSettingsFile.exists()) {
+            request.setUserSettingsFile(mavenEnvironment.getUserSettingsFile());
         }
-        String mavenRepo = System.getenv("M2_REPO");
-        if (mavenRepo == null) {
-            throw new IllegalStateException("M2_REPO not set. This is required for maven version:set to run");
-        }
+
         request.setMavenHome(new File(mavenHome));
         request.setLocalRepositoryDirectory(new File(mavenRepo));
 

@@ -1,12 +1,15 @@
 package uk.anbu.maven.monorepo;
 
 import lombok.SneakyThrows;
+import org.apache.maven.execution.MavenSession;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.logging.Log;
+import org.apache.maven.plugins.annotations.Component;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.project.MavenProject;
+import org.apache.maven.settings.Settings;
 
 import java.io.File;
 import java.util.HashSet;
@@ -17,15 +20,31 @@ import java.util.stream.Collectors;
 @Mojo(name = "increment-changed-module-version", defaultPhase = LifecyclePhase.INITIALIZE)
 public class IncrementChangedModuleVersionMojo extends AbstractMojo {
 
-    @Parameter(defaultValue = "${project.basedir}", readonly = true)
-    private File basedir;
-
     @Parameter(property = "project", readonly = true)
     private MavenProject project;
+
+    @Parameter(property = "settings")
+    private Settings settings;
+
+    @Component
+    private MavenSession session;
+
+    @Parameter(defaultValue = "${project.basedir}", readonly = true)
+    private File basedir;
 
     @Override
     @SneakyThrows
     public void execute() {
+        MavenEnvironment mavenEnvironment = MavenEnvironment.builder()
+                .projectName(project.getName())
+                .projectVersion(project.getVersion())
+                .artifactId(project.getArtifactId())
+                .session(session)
+                .groupId(project.getGroupId())
+                .home(System.getProperty("maven.home"))
+                .settings(settings)
+                .build();
+
         String packaging = project.getPackaging();
         List<String> modules = project.getModules();
         String baseDir = basedir.getAbsolutePath();
@@ -44,7 +63,7 @@ public class IncrementChangedModuleVersionMojo extends AbstractMojo {
         allModulesToUpdate.addAll(affectedDependantModules);
 
         for (String module : allModulesToUpdate) {
-            String newVersion = new GitHelper(getLog(), basedir).incrementRevisionOfSubModule(module);
+            String newVersion = new GitHelper(getLog(), basedir).incrementRevisionOfSubModule(module, mavenEnvironment);
             getLog().info("Incremented version for module " + module + " to " + newVersion);
         }
 
