@@ -58,21 +58,6 @@ public class GitHelper {
     @SneakyThrows
     public List<String> changedModuleList() {
         List<String> changedModules;
-        final SshSessionFactory sshSessionFactory = new JschConfigSessionFactory() {
-            @Override
-            protected void configure(OpenSshConfig.Host host, Session session) {
-            }
-
-            @Override
-            protected JSch createDefaultJSch(FS fs) throws JSchException {
-                JSch defaultJSch = super.createDefaultJSch(fs);
-                var homeDir = System.getProperty("user.home");
-                var idRsa = new File(homeDir, ".ssh/id_rsa");
-                getLog().info(String.format("Using private key %s", idRsa.getAbsolutePath()));
-                defaultJSch.addIdentity(idRsa.getAbsolutePath());
-                return defaultJSch;
-            }
-        };
         getLog().info("Using basedir: " + basedir);
 
         Repository repository = new FileRepositoryBuilder()
@@ -81,18 +66,35 @@ public class GitHelper {
 
         try (Git git = new Git(repository)) {
             var fetchCommand = git.fetch();
-            fetchCommand.setTransportConfigCallback(transport -> {
-                SshTransport sshTransport = (SshTransport) transport;
-                sshTransport.setSshSessionFactory(sshSessionFactory);
-            });
+
+            // Only configure SSH if the remote URL uses SSH protocol
+            String remoteUrl = git.getRepository().getConfig().getString("remote", "origin", "url");
+            if (remoteUrl != null && remoteUrl.startsWith("ssh://")) {
+                final SshSessionFactory sshSessionFactory = new JschConfigSessionFactory() {
+                    @Override
+                    protected void configure(OpenSshConfig.Host host, Session session) {
+                    }
+
+                    @Override
+                    protected JSch createDefaultJSch(FS fs) throws JSchException {
+                        JSch defaultJSch = super.createDefaultJSch(fs);
+                        var homeDir = System.getProperty("user.home");
+                        var idRsa = new File(homeDir, ".ssh/id_rsa");
+                        getLog().info(String.format("Using private key %s", idRsa.getAbsolutePath()));
+                        defaultJSch.addIdentity(idRsa.getAbsolutePath());
+                        return defaultJSch;
+                    }
+                };
+
+                fetchCommand.setTransportConfigCallback(transport -> {
+                    if (transport instanceof SshTransport) {
+                        ((SshTransport) transport).setSshSessionFactory(sshSessionFactory);
+                    }
+                });
+            }
 
             // Fetch all remote tags
-            fetchCommand.setTagOpt(TagOpt.FETCH_TAGS)
-                    .setTransportConfigCallback(transport -> {
-                        SshTransport sshTransport = (SshTransport) transport;
-                        sshTransport.setSshSessionFactory(sshSessionFactory);
-                    })
-                    .call();
+            fetchCommand.setTagOpt(TagOpt.FETCH_TAGS).call();
 
             // Find the last commit with prefix 'last-successful-build-'
             RevCommit lastSuccessfulBuildCommit = findLastSuccessfulBuildCommit(git);
